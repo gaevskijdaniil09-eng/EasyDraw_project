@@ -1,5 +1,5 @@
 from DB import async_session_factory
-from models import User, RoadmapNode, Resource, UserResourceProgress, UserNodeProgress, Posts, Comments, Likes
+from models import User, RoadmapNode, Resource, UserResourceProgress, UserSubNodeProgress, Posts, Comments, Likes
 from fastapi import APIRouter, Depends, UploadFile
 from sqlalchemy import select, insert, func, delete
 from sqlalchemy.orm import selectinload

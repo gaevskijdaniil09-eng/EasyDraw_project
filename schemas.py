@@ -18,7 +18,7 @@ class ShortUserDTO(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 class ResourceCreateDTO(BaseModel):
-    node_id: int
+    subnode_id: int
     url: HttpUrl
     name: str
     step: int
@@ -40,13 +40,20 @@ class NodeCreateDTO(BaseModel):
     order_index: int
     category: str
 
+class SubnodeCreateDTO(BaseModel):
+    name: str
+    node_id: int
+    description: str
+    order_index: int
+    category: str
+
 class NodeReadDTO(BaseModel):
     id: int
     name: str
     description: str
     order_index: int
     category: str
-    resources: list[ResourceReadDTO]
+    subnodes: list[SubnodeCreateDTO]
 
     model_config = ConfigDict(from_attributes=True)
 

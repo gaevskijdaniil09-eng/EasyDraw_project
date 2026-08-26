@@ -42,24 +42,34 @@ class RoadmapNode(Base):
     description: Mapped[str150]
     order_index: Mapped[int]
     category: Mapped[str50]
-    resources: Mapped[list["Resource"]] = relationship(back_populates="node")
+    subnodes: Mapped[list["SubNode"]] = relationship(back_populates="node")
 
+class SubNode(Base):
+    __tablename__ = "subnode"
+    id: Mapped[int_pk]
+    node_id: Mapped[int] = mapped_column(ForeignKey("node.id"))
+    name: Mapped[str30]
+    description: Mapped[str150]
+    order_index: Mapped[int]
+    category: Mapped[str50]
+    resources: Mapped[list["Resource"]] = relationship(back_populates="subnode", cascade="all, delete-orphan")
+    node: Mapped[RoadmapNode] = relationship(back_populates="subnodes")
 
 class Resource(Base):
     __tablename__ = "resources"
     id: Mapped[int_pk]
-    node_id: Mapped[int] = mapped_column(ForeignKey("node.id"))
+    subnode_id: Mapped[int] = mapped_column(ForeignKey("subnode.id"))
     url: Mapped[str]
     name: Mapped[str50]
     step: Mapped[int]
     description: Mapped[str150]
-    node: Mapped["RoadmapNode"] = relationship(back_populates="resources")
+    subnode: Mapped["SubNode"] = relationship(back_populates="resources")
     resource_progress: Mapped[list["UserResourceProgress"]] = relationship(back_populates="resource")
 
-class UserNodeProgress(Base):
-    __tablename__ = "node_progress"
+class UserSubNodeProgress(Base):
+    __tablename__ = "subnode_progress"
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
-    node_id: Mapped[int] = mapped_column(ForeignKey("node.id", ondelete="CASCADE"), primary_key=True)
+    subnode_id: Mapped[int] = mapped_column(ForeignKey("subnode.id", ondelete="CASCADE"), primary_key=True)
     is_completed: Mapped[bool] = mapped_column(default=False)
 
 class UserResourceProgress(Base):
