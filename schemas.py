@@ -68,3 +68,7 @@ class PostReadDTO(BaseModel):
 
     model_config = ConfigDict(from_attributes=True)
 
+class CommentCreateDTO(BaseModel):
+    post_id: int
+    text: str = Field(min_length=1, max_length=500)
+

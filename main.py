@@ -21,4 +21,4 @@ app.include_router(router_auth)
 app.include_router(router_roadmap)
 app.include_router(router_community)
 
-app.mount("/static", StaticFiles(directory="uploads"), name="static")
+app.mount("/static", StaticFiles(directory="static"), name="static")
