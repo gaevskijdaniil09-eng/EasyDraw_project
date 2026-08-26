@@ -22,6 +22,10 @@ export default function App() {
   const [postDesc, setPostDesc] = useState('');
   const [postFile, setPostFile] = useState(null);
 
+  // Состояния для лайков и комментариев
+  const [activeCommentPostId, setActiveCommentPostId] = useState(null);
+  const [commentInputText, setCommentInputText] = useState('');
+
   useEffect(() => {
     if (token) fetchRoadmap();
   }, [token]);
@@ -36,7 +40,6 @@ export default function App() {
       const data = await res.json();
       if (Array.isArray(data)) {
         setNodes(data);
-        // Если какой-то модуль уже открыт, обновляем его данные
         if (selectedNode) {
           const updated = data.find(n => n.id === selectedNode.id);
           if (updated) setSelectedNode(updated);
@@ -116,6 +119,46 @@ export default function App() {
         fetchPosts();
       }
     } catch (e) { console.error(e); }
+  };
+
+  const handleToggleLike = async (postId) => {
+    try {
+      const res = await fetch(`${API_BASE}/community/add/like?post_id=${postId}`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      if (res.ok) {
+        fetchPosts();
+      }
+    } catch (e) {
+      console.error("Error toggling like", e);
+    }
+  };
+
+  const handleAddComment = async (e, postId) => {
+    e.preventDefault();
+    if (!commentInputText.trim()) return;
+
+    try {
+      const res = await fetch(`${API_BASE}/community/add/comment`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          post_id: postId,
+          text: commentInputText
+        })
+      });
+
+      if (res.ok) {
+        setCommentInputText('');
+        fetchPosts();
+      }
+    } catch (e) {
+      console.error("Error adding comment", e);
+    }
   };
 
   // 1. ЭКРАН ВХОДА
@@ -274,7 +317,6 @@ export default function App() {
         <main className="flex-grow p-8 relative z-10 overflow-y-auto h-[calc(100vh-3.5rem)]">
           {activeTab === 'roadmap' && (
             <>
-              {/* ПОДЭКРАН: СПИСОК ТЕМ ИЛИ ОДИН МОДУЛЬ */}
               {!selectedNode ? (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                   <div className="mb-8 border-b border-slate-800/80 pb-4">
@@ -326,7 +368,6 @@ export default function App() {
                   </div>
                 </motion.div>
               ) : (
-                /* ПОДЭКРАН: ПОШАГОВОЕ МЕНЮ ВЫБРАННОЙ ТЕМЫ */
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}>
                   <button
                     onClick={() => setSelectedNode(null)}
@@ -350,7 +391,6 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* ПОШАГОВЫЙ СПИСОК УРОКОВ / РЕСУРСОВ */}
                   <h2 className="text-xs font-bold text-purple-400 mb-4 tracking-widest">// STEP_BY_STEP_LEARNING</h2>
 
                   <div className="space-y-3">
@@ -411,21 +451,91 @@ export default function App() {
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {posts.map(post => (
-                  <div key={post.id} className="bg-[#090d16]/60 border border-slate-800 rounded-xl p-3 flex flex-col hover:border-purple-500/30 transition-all backdrop-blur-md">
-                    <div className="h-56 bg-black overflow-hidden mb-3 rounded-lg border border-slate-800 relative">
-                      <img src={`${API_BASE}${post.image_url}`} alt="Art" className="w-full h-full object-cover pointer-events-none" />
-                    </div>
-                    <p className="text-xs text-slate-300 mb-4 normal-case font-sans flex-grow leading-relaxed">{post.description}</p>
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[10px]">
-                      <span className="text-purple-400 font-semibold">USER: {post.user?.user_name || 'ANON'}</span>
-                      <div className="flex space-x-3">
-                        <span className="flex items-center space-x-1 text-rose-400"><Heart className="w-3.5 h-3.5" /><span>{(post.likes || []).length}</span></span>
-                        <span className="flex items-center space-x-1 text-cyan-400"><MessageSquare className="w-3.5 h-3.5" /><span>{(post.comments || []).length}</span></span>
+                {posts.map(post => {
+                  const isCommentsOpen = activeCommentPostId === post.id;
+                  const likesList = post.likes || [];
+                  const commentsList = post.comments || [];
+
+                  return (
+                    <div key={post.id} className="bg-[#090d16]/60 border border-slate-800 rounded-xl p-3 flex flex-col hover:border-purple-500/30 transition-all backdrop-blur-md">
+                      <div className="h-56 bg-black overflow-hidden mb-3 rounded-lg border border-slate-800 relative group">
+                        <img src={`${API_BASE}${post.image_url}`} alt="Art" className="w-full h-full object-cover pointer-events-none group-hover:scale-105 transition-transform duration-300" />
                       </div>
+                      <p className="text-xs text-slate-300 mb-4 normal-case font-sans flex-grow leading-relaxed">{post.description}</p>
+
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-[10px]">
+                        <span className="text-purple-400 font-semibold truncate max-w-[120px]">
+                          USER: {post.user?.user_name || 'ANON'}
+                        </span>
+
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleToggleLike(post.id)}
+                            className="flex items-center space-x-1 px-2.5 py-1 rounded-md border transition-all bg-slate-900/50 border-slate-800 text-slate-400 hover:border-rose-500/50 hover:text-rose-400"
+                          >
+                            <Heart className="w-3.5 h-3.5" />
+                            <span className="font-bold">{likesList.length}</span>
+                          </button>
+
+                          <button
+                            onClick={() => setActiveCommentPostId(isCommentsOpen ? null : post.id)}
+                            className={`flex items-center space-x-1 px-2.5 py-1 rounded-md border transition-all ${
+                              isCommentsOpen
+                                ? 'bg-purple-950/40 border-purple-500/50 text-purple-300'
+                                : 'bg-slate-900/50 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                            }`}
+                          >
+                            <MessageSquare className="w-3.5 h-3.5" />
+                            <span className="font-bold">{commentsList.length}</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      <AnimatePresence>
+                        {isCommentsOpen && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            className="mt-3 pt-3 border-t border-slate-800/60 space-y-3 overflow-hidden"
+                          >
+                            <div className="max-h-36 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                              {commentsList.length === 0 ? (
+                                <p className="text-[10px] text-slate-500 normal-case font-sans italic text-center py-2">// Комментариев пока нет...</p>
+                              ) : (
+                                commentsList.map((c, idx) => (
+                                  <div key={c.id || idx} className="bg-[#030712] p-2 rounded-lg border border-slate-800/80 text-[11px] normal-case font-sans">
+                                    <span className="text-purple-400 font-mono font-bold uppercase text-[9px] block">
+                                      {c.user?.user_name || 'USER'}:
+                                    </span>
+                                    <p className="text-slate-300 mt-0.5 leading-snug">{c.text}</p>
+                                  </div>
+                                ))
+                              )}
+                            </div>
+
+                            <form onSubmit={(e) => handleAddComment(e, post.id)} className="flex items-center space-x-2">
+                              <input
+                                type="text"
+                                placeholder="Комментировать..."
+                                value={commentInputText}
+                                onChange={(e) => setCommentInputText(e.target.value)}
+                                className="flex-grow bg-[#030712] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none normal-case font-sans select-text"
+                              />
+                              <button
+                                type="submit"
+                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] rounded-lg transition-all shrink-0"
+                              >
+                                SEND
+                              </button>
+                            </form>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </motion.div>
           )}

@@ -44,6 +44,7 @@ class RoadmapNode(Base):
     category: Mapped[str50]
     resources: Mapped[list["Resource"]] = relationship(back_populates="node")
 
+
 class Resource(Base):
     __tablename__ = "resources"
     id: Mapped[int_pk]
