@@ -1,8 +1,37 @@
-import React, { useState, useEffect } from 'react';
+ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Terminal, Image, User, Upload, CheckSquare, Square, Heart, MessageSquare, X, Box, ArrowRight, ShieldCheck, ChevronRight, ArrowLeft, CheckCircle2, Circle } from 'lucide-react';
+import {
+  Terminal, Image, User, Upload, Heart, MessageSquare,
+  X, Box, ArrowRight, ShieldCheck, ChevronRight, ArrowLeft,
+  CheckCircle2, Circle, Sprout, Zap, Crown
+} from 'lucide-react';
 
 const API_BASE = "http://127.0.0.1:8000";
+
+// Конфигурация визуализации уровней
+const LEVEL_CONFIG = {
+  noob: {
+    label: 'NOOB',
+    icon: Sprout,
+    activeBg: 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.3)]',
+    hoverBorder: 'hover:border-emerald-500/50',
+    color: 'text-emerald-400'
+  },
+  average: {
+    label: 'AVERAGE',
+    icon: Zap,
+    activeBg: 'bg-cyan-950/60 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]',
+    hoverBorder: 'hover:border-cyan-500/50',
+    color: 'text-cyan-400'
+  },
+  pro: {
+    label: 'PRO',
+    icon: Crown,
+    activeBg: 'bg-amber-950/60 border-amber-500 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.3)]',
+    hoverBorder: 'hover:border-amber-500/50',
+    color: 'text-amber-400'
+  }
+};
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('roadmap');
@@ -10,19 +39,19 @@ export default function App() {
   const [nodes, setNodes] = useState([]);
   const [posts, setPosts] = useState([]);
 
-  // Выбранный модуль для отображения на отдельном экране
   const [selectedNode, setSelectedNode] = useState(null);
+  const [selectedSubNode, setSelectedSubNode] = useState(null);
 
   const [isRegister, setIsRegister] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [selectedLevel, setSelectedLevel] = useState('noob');
   const [authError, setAuthError] = useState('');
   const [postDesc, setPostDesc] = useState('');
   const [postFile, setPostFile] = useState(null);
 
-  // Состояния для лайков и комментариев
   const [activeCommentPostId, setActiveCommentPostId] = useState(null);
   const [commentInputText, setCommentInputText] = useState('');
 
@@ -34,15 +63,24 @@ export default function App() {
     if (token && activeTab === 'community') fetchPosts();
   }, [activeTab, token]);
 
+  // ИСПРАВЛЕНИЕ: Передача Authorization заголовка для корректного получения Roadmap
   const fetchRoadmap = async () => {
     try {
-      const res = await fetch(`${API_BASE}/roadmap/`);
+      const res = await fetch(`${API_BASE}/roadmap/show/nodes`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
       const data = await res.json();
       if (Array.isArray(data)) {
         setNodes(data);
         if (selectedNode) {
           const updated = data.find(n => n.id === selectedNode.id);
-          if (updated) setSelectedNode(updated);
+          if (updated) {
+            setSelectedNode(updated);
+            if (selectedSubNode) {
+              const updatedSub = (updated.subnodes || []).find(s => s.id === selectedSubNode.id);
+              if (updatedSub) setSelectedSubNode(updatedSub);
+            }
+          }
         }
       }
     } catch (e) { console.error("Error fetching roadmap", e); }
@@ -74,11 +112,15 @@ export default function App() {
     setAuthError('');
     const endpoint = isRegister ? '/auth/register' : '/auth/sign_in';
 
+    const bodyData = isRegister
+      ? { user_name: username, password, level: selectedLevel, role: 'user' }
+      : { user_name: username, password, role: 'user' };
+
     try {
       const res = await fetch(`${API_BASE}${endpoint}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ user_name: username, password, role: 'user' })
+        body: JSON.stringify(bodyData)
       });
 
       const data = await res.json();
@@ -161,6 +203,10 @@ export default function App() {
     }
   };
 
+  const allResources = nodes.flatMap(n => (n.subnodes || []).flatMap(s => s.resources || []));
+  const completedCount = allResources.filter(r => r.is_completed).length;
+  const progressPercent = allResources.length ? Math.round((completedCount / allResources.length) * 100) : 0;
+
   // 1. ЭКРАН ВХОДА
   if (!token) {
     return (
@@ -168,7 +214,7 @@ export default function App() {
         <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-900/15 rounded-full blur-[180px] pointer-events-none" />
 
         <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="w-full max-w-md bg-[#090d16]/90 border border-purple-500/30 rounded-2xl p-8 backdrop-blur-xl shadow-[0_0_50px_rgba(168,85,247,0.15)] relative z-10">
-          <div className="flex flex-col items-center mb-8 text-center">
+          <div className="flex flex-col items-center mb-6 text-center">
             <div className="w-12 h-12 bg-purple-950/80 border border-purple-500/50 rounded-xl flex items-center justify-center mb-3 shadow-[0_0_20px_rgba(168,85,247,0.3)]">
               <Box className="w-6 h-6 text-purple-400" />
             </div>
@@ -212,6 +258,33 @@ export default function App() {
               />
             </div>
 
+            {isRegister && (
+              <div>
+                <label className="text-[10px] text-slate-400 mb-1 block">EXPERIENCE LEVEL</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {Object.entries(LEVEL_CONFIG).map(([key, config]) => {
+                    const Icon = config.icon;
+                    const isSelected = selectedLevel === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => setSelectedLevel(key)}
+                        className={`py-3 px-2 rounded-xl text-xs font-bold border flex flex-col items-center justify-center space-y-1.5 transition-all duration-200 ${
+                          isSelected
+                            ? config.activeBg
+                            : `bg-[#030712] border-slate-800 text-slate-400 ${config.hoverBorder}`
+                        }`}
+                      >
+                        <Icon className={`w-5 h-5 ${isSelected ? config.color : 'text-slate-500'}`} />
+                        <span className="text-[10px] tracking-wider">{config.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
             <button type="submit" className="w-full py-3.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg shadow-[0_0_25px_rgba(168,85,247,0.4)] transition-all flex items-center justify-center space-x-2">
               <span>{isRegister ? 'CREATE ACCOUNT' : 'SYSTEM ACCESS'}</span>
               <ArrowRight className="w-4 h-4" />
@@ -229,19 +302,13 @@ export default function App() {
     );
   }
 
-  // Расчет общего прогресса
-  const allResources = nodes.flatMap(n => n.resources || []);
-  const completedCount = allResources.filter(r => r.is_completed).length;
-  const progressPercent = allResources.length ? Math.round((completedCount / allResources.length) * 100) : 0;
-
   // 2. ГЛАВНЫЙ ИНТЕРФЕЙС
   return (
     <div className="h-screen bg-[#030712] text-slate-100 flex flex-col font-mono selection:bg-purple-500 selection:text-white uppercase tracking-widest relative overflow-hidden select-none">
 
-      {/* 2.1 ВЕРХНИЙ ТАСКБАР (TASKBAR) */}
       <header className="h-14 border-b border-slate-800/80 bg-[#090d16]/90 backdrop-blur-xl px-6 flex items-center justify-between z-40 shrink-0">
         <div className="flex items-center space-x-4">
-          <div className="flex items-center space-x-2 cursor-pointer" onClick={() => { setActiveTab('roadmap'); setSelectedNode(null); }}>
+          <div className="flex items-center space-x-2 cursor-pointer" onClick={() => { setActiveTab('roadmap'); setSelectedNode(null); setSelectedSubNode(null); }}>
             <div className="w-7 h-7 bg-purple-950/80 border border-purple-500/50 rounded-md flex items-center justify-center">
               <Box className="w-4 h-4 text-purple-400" />
             </div>
@@ -252,14 +319,21 @@ export default function App() {
 
           {selectedNode && (
             <div className="flex items-center space-x-2 text-xs text-slate-400 normal-case font-sans border-l border-slate-800 pl-4">
-              <span className="cursor-pointer hover:text-white" onClick={() => setSelectedNode(null)}>Roadmap</span>
+              <span className="cursor-pointer hover:text-white uppercase font-mono" onClick={() => { setSelectedNode(null); setSelectedSubNode(null); }}>Roadmap</span>
               <ChevronRight className="w-3 h-3 text-slate-600" />
-              <span className="text-purple-400 font-mono font-bold uppercase">{selectedNode.name}</span>
+              <span className={`cursor-pointer ${selectedSubNode ? 'hover:text-white' : 'text-purple-400 font-bold'}`} onClick={() => setSelectedSubNode(null)}>
+                {selectedNode.name}
+              </span>
+              {selectedSubNode && (
+                <>
+                  <ChevronRight className="w-3 h-3 text-slate-600" />
+                  <span className="text-purple-400 font-bold font-mono">{selectedSubNode.name}</span>
+                </>
+              )}
             </div>
           )}
         </div>
 
-        {/* Прогресс-бар в таскбаре */}
         <div className="flex items-center space-x-6">
           <div className="flex items-center space-x-3 bg-[#030712] border border-slate-800 px-3 py-1.5 rounded-lg">
             <span className="text-[10px] text-slate-400">PROGRESS:</span>
@@ -280,7 +354,6 @@ export default function App() {
       </header>
 
       <div className="flex flex-grow overflow-hidden">
-        {/* 2.2 ЛЕВЫЙ САЙДБАР */}
         <aside className="w-64 border-r border-slate-800/80 bg-[#090d16]/90 backdrop-blur-xl p-4 flex flex-col justify-between shrink-0 z-30">
           <nav className="space-y-2">
             {[
@@ -293,7 +366,7 @@ export default function App() {
               return (
                 <button
                   key={tab.id}
-                  onClick={() => { setActiveTab(tab.id); setSelectedNode(null); }}
+                  onClick={() => { setActiveTab(tab.id); setSelectedNode(null); setSelectedSubNode(null); }}
                   className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl text-xs font-semibold transition-all duration-300 border ${
                     isActive
                       ? 'bg-purple-950/40 text-purple-300 border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.2)] border-l-4 border-l-purple-500'
@@ -313,7 +386,6 @@ export default function App() {
           </div>
         </aside>
 
-        {/* 2.3 ОСНОВНОЙ КОНТЕНТ */}
         <main className="flex-grow p-8 relative z-10 overflow-y-auto h-[calc(100vh-3.5rem)]">
           {activeTab === 'roadmap' && (
             <>
@@ -321,14 +393,15 @@ export default function App() {
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                   <div className="mb-8 border-b border-slate-800/80 pb-4">
                     <h1 className="text-xl font-extrabold text-white tracking-widest">// ROADMAP_MODULES</h1>
-                    <p className="text-slate-400 text-xs mt-1 normal-case font-sans">Выберите раздел, чтобы перейти к пошаговому обучению.</p>
+                    <p className="text-slate-400 text-xs mt-1 normal-case font-sans">Выберите раздел, чтобы перейти к ветвям обучения.</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     {nodes.map((node, i) => {
-                      const resList = node.resources || [];
-                      const done = resList.filter(r => r.is_completed).length;
-                      const percent = resList.length ? Math.round((done / resList.length) * 100) : 0;
+                      const subList = node.subnodes || [];
+                      const allRes = subList.flatMap(s => s.resources || []);
+                      const done = allRes.filter(r => r.is_completed).length;
+                      const percent = allRes.length ? Math.round((done / allRes.length) * 100) : 0;
 
                       return (
                         <div
@@ -355,11 +428,76 @@ export default function App() {
 
                           <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between">
                             <div className="flex items-center space-x-2">
-                              <span className="text-[10px] text-slate-400">{done}/{resList.length} УРОКОВ</span>
+                              <span className="text-[10px] text-slate-400">{subList.length} ВЕТВЕЙ</span>
                               <span className="text-[10px] text-purple-400 font-bold">({percent}%)</span>
                             </div>
                             <span className="text-xs text-purple-400 font-bold flex items-center group-hover:translate-x-1 transition-transform">
-                              OPEN STEP <ChevronRight className="w-4 h-4 ml-1" />
+                              OPEN MODULE <ChevronRight className="w-4 h-4 ml-1" />
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </motion.div>
+              ) : !selectedSubNode ? (
+                <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}>
+                  <button
+                    onClick={() => setSelectedNode(null)}
+                    className="flex items-center space-x-2 text-xs text-slate-400 hover:text-white mb-6 transition-colors bg-[#090d16] border border-slate-800 px-3 py-1.5 rounded-lg"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                    <span>НАЗАД К СПИСКУ МОДУЛЕЙ</span>
+                  </button>
+
+                  <div className="bg-[#090d16]/80 border border-slate-800 rounded-2xl p-8 mb-8 backdrop-blur-md">
+                    <span className="text-xs text-purple-400 font-bold border border-purple-800/40 bg-purple-950/40 px-3 py-1 rounded-lg">
+                      {selectedNode.category || 'MODULE'}
+                    </span>
+                    <h1 className="text-2xl font-black text-white mt-3">{selectedNode.name}</h1>
+                    <p className="text-slate-400 text-xs normal-case font-sans mt-2 max-w-2xl leading-relaxed">
+                      {selectedNode.description}
+                    </p>
+                  </div>
+
+                  <h2 className="text-xs font-bold text-purple-400 mb-4 tracking-widest">// SUBNODES_BRANCHES</h2>
+
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {(selectedNode.subnodes || []).map((subNode, idx) => {
+                      const resList = subNode.resources || [];
+                      const done = resList.filter(r => r.is_completed).length;
+                      const percent = resList.length ? Math.round((done / resList.length) * 100) : 0;
+
+                      return (
+                        <div
+                          key={subNode.id}
+                          onClick={() => setSelectedSubNode(subNode)}
+                          className="bg-[#090d16]/70 border border-slate-800/80 hover:border-purple-500/50 rounded-xl p-6 transition-all duration-300 cursor-pointer group hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] flex flex-col justify-between"
+                        >
+                          <div>
+                            <div className="flex justify-between items-start mb-3">
+                              <span className="text-xs text-purple-400 font-bold bg-purple-950/50 border border-purple-800/40 px-2.5 py-1 rounded-lg">
+                                [{String(idx + 1).padStart(2, '0')}]
+                              </span>
+                              <span className="text-[10px] px-2 py-0.5 border border-slate-800 text-slate-400 rounded bg-slate-900/50">
+                                {subNode.category || 'SUBNODE'}
+                              </span>
+                            </div>
+                            <h3 className="text-base font-bold text-slate-100 group-hover:text-purple-300 transition-colors mb-2">
+                              {subNode.name}
+                            </h3>
+                            <p className="text-slate-400 text-xs normal-case font-sans leading-relaxed mb-6">
+                              {subNode.description}
+                            </p>
+                          </div>
+
+                          <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between">
+                            <div className="flex items-center space-x-2">
+                              <span className="text-[10px] text-slate-400">{resList.length} РЕСУРСОВ</span>
+                              <span className="text-[10px] text-purple-400 font-bold">({percent}%)</span>
+                            </div>
+                            <span className="text-xs text-purple-400 font-bold flex items-center group-hover:translate-x-1 transition-transform">
+                              OPEN BRANCH <ChevronRight className="w-4 h-4 ml-1" />
                             </span>
                           </div>
                         </div>
@@ -370,31 +508,27 @@ export default function App() {
               ) : (
                 <motion.div initial={{ opacity: 0, x: 10 }} animate={{ opacity: 1, x: 0 }}>
                   <button
-                    onClick={() => setSelectedNode(null)}
+                    onClick={() => setSelectedSubNode(null)}
                     className="flex items-center space-x-2 text-xs text-slate-400 hover:text-white mb-6 transition-colors bg-[#090d16] border border-slate-800 px-3 py-1.5 rounded-lg"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    <span>НАЗАД К СПИСКУ ТЕМ</span>
+                    <span>НАЗАД К ВЕТВЯМ МОДУЛЯ</span>
                   </button>
 
                   <div className="bg-[#090d16]/80 border border-slate-800 rounded-2xl p-8 mb-8 backdrop-blur-md">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-xs text-purple-400 font-bold border border-purple-800/40 bg-purple-950/40 px-3 py-1 rounded-lg">
-                          {selectedNode.category || 'MODULE'}
-                        </span>
-                        <h1 className="text-2xl font-black text-white mt-3">{selectedNode.name}</h1>
-                        <p className="text-slate-400 text-xs normal-case font-sans mt-2 max-w-2xl leading-relaxed">
-                          {selectedNode.description}
-                        </p>
-                      </div>
-                    </div>
+                    <span className="text-xs text-purple-400 font-bold border border-purple-800/40 bg-purple-950/40 px-3 py-1 rounded-lg">
+                      {selectedSubNode.category || 'SUBNODE'}
+                    </span>
+                    <h1 className="text-2xl font-black text-white mt-3">{selectedSubNode.name}</h1>
+                    <p className="text-slate-400 text-xs normal-case font-sans mt-2 max-w-2xl leading-relaxed">
+                      {selectedSubNode.description}
+                    </p>
                   </div>
 
-                  <h2 className="text-xs font-bold text-purple-400 mb-4 tracking-widest">// STEP_BY_STEP_LEARNING</h2>
+                  <h2 className="text-xs font-bold text-purple-400 mb-4 tracking-widest">// RESOURCES_AND_STEPS</h2>
 
                   <div className="space-y-3">
-                    {(selectedNode.resources || []).map((resource, idx) => (
+                    {(selectedSubNode.resources || []).map((resource, idx) => (
                       <div
                         key={resource.id}
                         onClick={() => handleToggleResource(resource.id)}
@@ -409,9 +543,14 @@ export default function App() {
                             {idx + 1}
                           </div>
                           <div>
-                            <h4 className="text-sm font-semibold normal-case font-sans">{resource.title || resource.name || `Урок ${idx + 1}`}</h4>
-                            <span className="text-[10px] text-slate-500 font-sans normal-case block">
-                              {resource.is_completed ? 'Урок успешно пройден' : 'Нажми, чтобы отметить выполненным'}
+                            <h4 className="text-sm font-semibold normal-case font-sans">{resource.name || `Ресурс ${idx + 1}`}</h4>
+                            {resource.url && (
+                              <a href={resource.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-purple-400 underline font-sans normal-case block mt-0.5">
+                                {resource.url}
+                              </a>
+                            )}
+                            <span className="text-[10px] text-slate-500 font-sans normal-case block mt-1">
+                              {resource.description || (resource.is_completed ? 'Ресурс пройден' : 'Нажми, чтобы отметить выполненным')}
                             </span>
                           </div>
                         </div>
@@ -532,7 +671,6 @@ export default function App() {
                           </motion.div>
                         )}
                       </AnimatePresence>
-
                     </div>
                   );
                 })}
@@ -549,7 +687,6 @@ export default function App() {
         </main>
       </div>
 
-      {/* Модалка поста */}
       <AnimatePresence>
         {showPostModal && (
           <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">

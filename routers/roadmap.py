@@ -7,7 +7,7 @@ from schemas import UserDTO,SignInDTO
 import bcrypt
 from fastapi import HTTPException
 from core.security import create_access_token, create_refresh_token, verify_refresh_token, allow_roles, get_current_user
-from schemas import NodeCreateDTO, ResourceCreateDTO, NodeReadDTO, SubnodeCreateDTO
+from schemas import NodeCreateDTO, ResourceCreateDTO, NodeReadDTO, SubnodeCreateDTO, ResourceReadDTO
 
 
 router_roadmap = APIRouter(prefix="/roadmap", tags=["Roadmap"])
@@ -121,3 +121,11 @@ async def toggle_progress(resource_id: int, user: User = Depends(get_current_use
             "node_id": subnode_id,
             "node_completed": id_node_completed
         }
+
+@router_roadmap.get("/show/resources", response_model=list[ResourceReadDTO])
+async def show_resources():
+    async with async_session_factory() as session:
+        query = select(Resource).order_by(Resource.id)
+        result = await session.execute(query)
+        resources = result.scalars().all()
+        return resources
