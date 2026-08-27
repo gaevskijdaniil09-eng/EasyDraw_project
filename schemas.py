@@ -26,7 +26,7 @@ class ResourceCreateDTO(BaseModel):
 
 class ResourceReadDTO(BaseModel):
     id: int
-    node_id: int
+    subnode_id: int
     url: str
     name: str
     step: int

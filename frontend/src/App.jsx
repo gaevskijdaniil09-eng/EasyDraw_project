@@ -1,42 +1,37 @@
- import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   Terminal, Image, User, Upload, Heart, MessageSquare,
   X, Box, ArrowRight, ShieldCheck, ChevronRight, ArrowLeft,
-  CheckCircle2, Circle, Sprout, Zap, Crown
+  CheckCircle2, Circle, Sprout, Zap, Crown, ExternalLink, Send
 } from 'lucide-react';
 
 const API_BASE = "http://127.0.0.1:8000";
 
-// Конфигурация визуализации уровней
 const LEVEL_CONFIG = {
-  noob: {
-    label: 'NOOB',
-    icon: Sprout,
-    activeBg: 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.3)]',
-    hoverBorder: 'hover:border-emerald-500/50',
-    color: 'text-emerald-400'
-  },
-  average: {
-    label: 'AVERAGE',
-    icon: Zap,
-    activeBg: 'bg-cyan-950/60 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]',
-    hoverBorder: 'hover:border-cyan-500/50',
-    color: 'text-cyan-400'
-  },
-  pro: {
-    label: 'PRO',
-    icon: Crown,
-    activeBg: 'bg-amber-950/60 border-amber-500 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.3)]',
-    hoverBorder: 'hover:border-amber-500/50',
-    color: 'text-amber-400'
+  noob: { label: 'NOOB', icon: Sprout, activeBg: 'bg-emerald-950/60 border-emerald-500 text-emerald-300 shadow-[0_0_15px_rgba(16,185,129,0.3)]', hoverBorder: 'hover:border-emerald-500/50', color: 'text-emerald-400' },
+  average: { label: 'AVERAGE', icon: Zap, activeBg: 'bg-cyan-950/60 border-cyan-500 text-cyan-300 shadow-[0_0_15px_rgba(6,182,212,0.3)]', hoverBorder: 'hover:border-cyan-500/50', color: 'text-cyan-400' },
+  pro: { label: 'PRO', icon: Crown, activeBg: 'bg-amber-950/60 border-amber-500 text-amber-300 shadow-[0_0_15px_rgba(245,158,11,0.3)]', hoverBorder: 'hover:border-amber-500/50', color: 'text-amber-400' }
+};
+
+// Функция для декодирования userId из JWT токена
+const getUserIdFromToken = (token) => {
+  if (!token) return null;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.sub || payload.user_id || payload.id;
+  } catch (e) {
+    return null;
   }
 };
 
 export default function App() {
   const [activeTab, setActiveTab] = useState('roadmap');
   const [token, setToken] = useState(localStorage.getItem('access_token') || null);
+  const currentUserId = getUserIdFromToken(token);
+
   const [nodes, setNodes] = useState([]);
+  const [subNodeResources, setSubNodeResources] = useState([]);
   const [posts, setPosts] = useState([]);
 
   const [selectedNode, setSelectedNode] = useState(null);
@@ -44,7 +39,6 @@ export default function App() {
 
   const [isRegister, setIsRegister] = useState(false);
   const [showPostModal, setShowPostModal] = useState(false);
-
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [selectedLevel, setSelectedLevel] = useState('noob');
@@ -63,27 +57,35 @@ export default function App() {
     if (token && activeTab === 'community') fetchPosts();
   }, [activeTab, token]);
 
-  // ИСПРАВЛЕНИЕ: Передача Authorization заголовка для корректного получения Roadmap
+  useEffect(() => {
+    if (selectedSubNode) {
+      fetchResourcesForSubNode(selectedSubNode.id);
+    } else {
+      setSubNodeResources([]);
+    }
+  }, [selectedSubNode]);
+
   const fetchRoadmap = async () => {
     try {
       const res = await fetch(`${API_BASE}/roadmap/show/nodes`, {
         headers: token ? { 'Authorization': `Bearer ${token}` } : {}
       });
       const data = await res.json();
-      if (Array.isArray(data)) {
-        setNodes(data);
-        if (selectedNode) {
-          const updated = data.find(n => n.id === selectedNode.id);
-          if (updated) {
-            setSelectedNode(updated);
-            if (selectedSubNode) {
-              const updatedSub = (updated.subnodes || []).find(s => s.id === selectedSubNode.id);
-              if (updatedSub) setSelectedSubNode(updatedSub);
-            }
-          }
-        }
-      }
-    } catch (e) { console.error("Error fetching roadmap", e); }
+      if (Array.isArray(data)) setNodes(data);
+    } catch (e) { console.error("Error fetching roadmap nodes", e); }
+  };
+
+  const fetchResourcesForSubNode = async (subnodeId) => {
+    try {
+      const res = await fetch(`${API_BASE}/roadmap/show/resources?subnode_id=${subnodeId}`, {
+        headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+      });
+      const data = await res.json();
+      setSubNodeResources(Array.isArray(data) ? data : []);
+    } catch (e) {
+      console.error("Error fetching subnode resources", e);
+      setSubNodeResources([]);
+    }
   };
 
   const fetchPosts = async () => {
@@ -99,12 +101,17 @@ export default function App() {
   const handleToggleResource = async (resourceId) => {
     if (!token) return;
     try {
-      await fetch(`${API_BASE}/roadmap/toggle?resource_id=${resourceId}`, {
+      const res = await fetch(`${API_BASE}/roadmap/toggle?resource_id=${resourceId}`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });
-      fetchRoadmap();
-    } catch (e) { console.error(e); }
+      if (res.ok) {
+        const toggleData = await res.json();
+        setSubNodeResources(prev => prev.map(r =>
+          r.id === resourceId ? { ...r, is_completed: toggleData.resource_completed } : r
+        ));
+      }
+    } catch (e) { console.error("Error toggling resource", e); }
   };
 
   const handleAuth = async (e) => {
@@ -172,9 +179,7 @@ export default function App() {
       if (res.ok) {
         fetchPosts();
       }
-    } catch (e) {
-      console.error("Error toggling like", e);
-    }
+    } catch (e) { console.error("Error toggling like", e); }
   };
 
   const handleAddComment = async (e, postId) => {
@@ -188,26 +193,16 @@ export default function App() {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify({
-          post_id: postId,
-          text: commentInputText
-        })
+        body: JSON.stringify({ post_id: postId, text: commentInputText })
       });
 
       if (res.ok) {
         setCommentInputText('');
         fetchPosts();
       }
-    } catch (e) {
-      console.error("Error adding comment", e);
-    }
+    } catch (e) { console.error("Error adding comment", e); }
   };
 
-  const allResources = nodes.flatMap(n => (n.subnodes || []).flatMap(s => s.resources || []));
-  const completedCount = allResources.filter(r => r.is_completed).length;
-  const progressPercent = allResources.length ? Math.round((completedCount / allResources.length) * 100) : 0;
-
-  // 1. ЭКРАН ВХОДА
   if (!token) {
     return (
       <div className="min-h-screen bg-[#030712] text-slate-100 flex items-center justify-center font-mono uppercase tracking-widest relative overflow-hidden p-4 select-none">
@@ -302,10 +297,8 @@ export default function App() {
     );
   }
 
-  // 2. ГЛАВНЫЙ ИНТЕРФЕЙС
   return (
     <div className="h-screen bg-[#030712] text-slate-100 flex flex-col font-mono selection:bg-purple-500 selection:text-white uppercase tracking-widest relative overflow-hidden select-none">
-
       <header className="h-14 border-b border-slate-800/80 bg-[#090d16]/90 backdrop-blur-xl px-6 flex items-center justify-between z-40 shrink-0">
         <div className="flex items-center space-x-4">
           <div className="flex items-center space-x-2 cursor-pointer" onClick={() => { setActiveTab('roadmap'); setSelectedNode(null); setSelectedSubNode(null); }}>
@@ -317,7 +310,7 @@ export default function App() {
             </span>
           </div>
 
-          {selectedNode && (
+          {selectedNode && activeTab === 'roadmap' && (
             <div className="flex items-center space-x-2 text-xs text-slate-400 normal-case font-sans border-l border-slate-800 pl-4">
               <span className="cursor-pointer hover:text-white uppercase font-mono" onClick={() => { setSelectedNode(null); setSelectedSubNode(null); }}>Roadmap</span>
               <ChevronRight className="w-3 h-3 text-slate-600" />
@@ -334,23 +327,13 @@ export default function App() {
           )}
         </div>
 
-        <div className="flex items-center space-x-6">
-          <div className="flex items-center space-x-3 bg-[#030712] border border-slate-800 px-3 py-1.5 rounded-lg">
-            <span className="text-[10px] text-slate-400">PROGRESS:</span>
-            <div className="w-32 bg-slate-900 h-2 rounded-full overflow-hidden border border-slate-800">
-              <div className="bg-gradient-to-r from-purple-600 to-indigo-500 h-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
-            </div>
-            <span className="text-xs text-purple-400 font-bold">{progressPercent}%</span>
-          </div>
-
-          <button
-            onClick={() => { localStorage.removeItem('access_token'); setToken(null); }}
-            className="px-3 py-1.5 text-[10px] font-bold text-rose-400 border border-rose-950/60 bg-rose-950/20 hover:bg-rose-900/40 rounded-lg transition-all flex items-center space-x-1.5"
-          >
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>EXIT</span>
-          </button>
-        </div>
+        <button
+          onClick={() => { localStorage.removeItem('access_token'); setToken(null); }}
+          className="px-3 py-1.5 text-[10px] font-bold text-rose-400 border border-rose-950/60 bg-rose-950/20 hover:bg-rose-900/40 rounded-lg transition-all flex items-center space-x-1.5"
+        >
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>EXIT</span>
+        </button>
       </header>
 
       <div className="flex flex-grow overflow-hidden">
@@ -381,8 +364,8 @@ export default function App() {
           </nav>
 
           <div className="p-3 bg-[#030712] border border-slate-800/80 rounded-xl text-[10px] text-slate-400">
-            <span className="block text-purple-400 font-bold mb-1">// STATUS</span>
-            <span className="normal-case block font-sans">Система работает в штатном режиме.</span>
+            <span className="block text-purple-400 font-bold mb-1">// SYSTEM STATUS</span>
+            <span className="normal-case block font-sans">Все модули синхронизированы.</span>
           </div>
         </aside>
 
@@ -392,52 +375,42 @@ export default function App() {
               {!selectedNode ? (
                 <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}>
                   <div className="mb-8 border-b border-slate-800/80 pb-4">
-                    <h1 className="text-xl font-extrabold text-white tracking-widest">// ROADMAP_MODULES</h1>
-                    <p className="text-slate-400 text-xs mt-1 normal-case font-sans">Выберите раздел, чтобы перейти к ветвям обучения.</p>
+                    <h1 className="text-xl font-extrabold text-white tracking-widest">// ROADMAP_NODES</h1>
+                    <p className="text-slate-400 text-xs mt-1 normal-case font-sans">Выберите ключевой модуль для раскрытия его структуры.</p>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {nodes.map((node, i) => {
-                      const subList = node.subnodes || [];
-                      const allRes = subList.flatMap(s => s.resources || []);
-                      const done = allRes.filter(r => r.is_completed).length;
-                      const percent = allRes.length ? Math.round((done / allRes.length) * 100) : 0;
-
-                      return (
-                        <div
-                          key={node.id}
-                          onClick={() => setSelectedNode(node)}
-                          className="bg-[#090d16]/70 border border-slate-800/80 hover:border-purple-500/50 rounded-xl p-6 transition-all duration-300 cursor-pointer group hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="flex justify-between items-start mb-3">
-                              <span className="text-xs text-purple-400 font-bold bg-purple-950/50 border border-purple-800/40 px-2.5 py-1 rounded-lg">
-                                [{String(i + 1).padStart(2, '0')}]
-                              </span>
-                              <span className="text-[10px] px-2 py-0.5 border border-slate-800 text-slate-400 rounded bg-slate-900/50">
-                                {node.category || 'MODULE'}
-                              </span>
-                            </div>
-                            <h3 className="text-base font-bold text-slate-100 group-hover:text-purple-300 transition-colors mb-2">
-                              {node.name}
-                            </h3>
-                            <p className="text-slate-400 text-xs normal-case font-sans leading-relaxed mb-6">
-                              {node.description}
-                            </p>
-                          </div>
-
-                          <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <span className="text-[10px] text-slate-400">{subList.length} ВЕТВЕЙ</span>
-                              <span className="text-[10px] text-purple-400 font-bold">({percent}%)</span>
-                            </div>
-                            <span className="text-xs text-purple-400 font-bold flex items-center group-hover:translate-x-1 transition-transform">
-                              OPEN MODULE <ChevronRight className="w-4 h-4 ml-1" />
+                    {nodes.map((node, i) => (
+                      <div
+                        key={node.id}
+                        onClick={() => setSelectedNode(node)}
+                        className="bg-[#090d16]/70 border border-slate-800/80 hover:border-purple-500/50 rounded-xl p-6 transition-all duration-300 cursor-pointer group hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex justify-between items-start mb-3">
+                            <span className="text-xs text-purple-400 font-bold bg-purple-950/50 border border-purple-800/40 px-2.5 py-1 rounded-lg">
+                              [{String(i + 1).padStart(2, '0')}]
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 border border-slate-800 text-slate-400 rounded bg-slate-900/50">
+                              {node.category || 'MODULE'}
                             </span>
                           </div>
+                          <h3 className="text-base font-bold text-slate-100 group-hover:text-purple-300 transition-colors mb-2">
+                            {node.name}
+                          </h3>
+                          <p className="text-slate-400 text-xs normal-case font-sans leading-relaxed mb-6">
+                            {node.description}
+                          </p>
                         </div>
-                      );
-                    })}
+
+                        <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between">
+                          <span className="text-[10px] text-slate-400">{(node.subnodes || []).length} SUBNODES</span>
+                          <span className="text-xs text-purple-400 font-bold flex items-center group-hover:translate-x-1 transition-transform">
+                            SELECT NODE <ChevronRight className="w-4 h-4 ml-1" />
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </motion.div>
               ) : !selectedSubNode ? (
@@ -447,12 +420,12 @@ export default function App() {
                     className="flex items-center space-x-2 text-xs text-slate-400 hover:text-white mb-6 transition-colors bg-[#090d16] border border-slate-800 px-3 py-1.5 rounded-lg"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    <span>НАЗАД К СПИСКУ МОДУЛЕЙ</span>
+                    <span>НАЗАД К СПИСКУ NODES</span>
                   </button>
 
                   <div className="bg-[#090d16]/80 border border-slate-800 rounded-2xl p-8 mb-8 backdrop-blur-md">
                     <span className="text-xs text-purple-400 font-bold border border-purple-800/40 bg-purple-950/40 px-3 py-1 rounded-lg">
-                      {selectedNode.category || 'MODULE'}
+                      {selectedNode.category || 'NODE'}
                     </span>
                     <h1 className="text-2xl font-black text-white mt-3">{selectedNode.name}</h1>
                     <p className="text-slate-400 text-xs normal-case font-sans mt-2 max-w-2xl leading-relaxed">
@@ -460,49 +433,39 @@ export default function App() {
                     </p>
                   </div>
 
-                  <h2 className="text-xs font-bold text-purple-400 mb-4 tracking-widest">// SUBNODES_BRANCHES</h2>
+                  <h2 className="text-xs font-bold text-purple-400 mb-4 tracking-widest">// SELECT_SUBNODE</h2>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-                    {(selectedNode.subnodes || []).map((subNode, idx) => {
-                      const resList = subNode.resources || [];
-                      const done = resList.filter(r => r.is_completed).length;
-                      const percent = resList.length ? Math.round((done / resList.length) * 100) : 0;
-
-                      return (
-                        <div
-                          key={subNode.id}
-                          onClick={() => setSelectedSubNode(subNode)}
-                          className="bg-[#090d16]/70 border border-slate-800/80 hover:border-purple-500/50 rounded-xl p-6 transition-all duration-300 cursor-pointer group hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] flex flex-col justify-between"
-                        >
-                          <div>
-                            <div className="flex justify-between items-start mb-3">
-                              <span className="text-xs text-purple-400 font-bold bg-purple-950/50 border border-purple-800/40 px-2.5 py-1 rounded-lg">
-                                [{String(idx + 1).padStart(2, '0')}]
-                              </span>
-                              <span className="text-[10px] px-2 py-0.5 border border-slate-800 text-slate-400 rounded bg-slate-900/50">
-                                {subNode.category || 'SUBNODE'}
-                              </span>
-                            </div>
-                            <h3 className="text-base font-bold text-slate-100 group-hover:text-purple-300 transition-colors mb-2">
-                              {subNode.name}
-                            </h3>
-                            <p className="text-slate-400 text-xs normal-case font-sans leading-relaxed mb-6">
-                              {subNode.description}
-                            </p>
-                          </div>
-
-                          <div className="pt-4 border-t border-slate-800/60 flex items-center justify-between">
-                            <div className="flex items-center space-x-2">
-                              <span className="text-[10px] text-slate-400">{resList.length} РЕСУРСОВ</span>
-                              <span className="text-[10px] text-purple-400 font-bold">({percent}%)</span>
-                            </div>
-                            <span className="text-xs text-purple-400 font-bold flex items-center group-hover:translate-x-1 transition-transform">
-                              OPEN BRANCH <ChevronRight className="w-4 h-4 ml-1" />
+                    {(selectedNode.subnodes || []).map((subNode, idx) => (
+                      <div
+                        key={subNode.id}
+                        onClick={() => setSelectedSubNode(subNode)}
+                        className="bg-[#090d16]/70 border border-slate-800/80 hover:border-purple-500/50 rounded-xl p-6 transition-all duration-300 cursor-pointer group hover:shadow-[0_0_30px_rgba(168,85,247,0.15)] flex flex-col justify-between"
+                      >
+                        <div>
+                          <div className="flex justify-between items-start mb-3">
+                            <span className="text-xs text-purple-400 font-bold bg-purple-950/50 border border-purple-800/40 px-2.5 py-1 rounded-lg">
+                              [{String(idx + 1).padStart(2, '0')}]
+                            </span>
+                            <span className="text-[10px] px-2 py-0.5 border border-slate-800 text-slate-400 rounded bg-slate-900/50">
+                              {subNode.category || 'SUBNODE'}
                             </span>
                           </div>
+                          <h3 className="text-base font-bold text-slate-100 group-hover:text-purple-300 transition-colors mb-2">
+                            {subNode.name}
+                          </h3>
+                          <p className="text-slate-400 text-xs normal-case font-sans leading-relaxed mb-6">
+                            {subNode.description}
+                          </p>
                         </div>
-                      );
-                    })}
+
+                        <div className="pt-4 border-t border-slate-800/60 flex items-center justify-end">
+                          <span className="text-xs text-purple-400 font-bold flex items-center group-hover:translate-x-1 transition-transform">
+                            VIEW RESOURCES <ChevronRight className="w-4 h-4 ml-1" />
+                          </span>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </motion.div>
               ) : (
@@ -512,7 +475,7 @@ export default function App() {
                     className="flex items-center space-x-2 text-xs text-slate-400 hover:text-white mb-6 transition-colors bg-[#090d16] border border-slate-800 px-3 py-1.5 rounded-lg"
                   >
                     <ArrowLeft className="w-4 h-4" />
-                    <span>НАЗАД К ВЕТВЯМ МОДУЛЯ</span>
+                    <span>НАЗАД К SUBNODES</span>
                   </button>
 
                   <div className="bg-[#090d16]/80 border border-slate-800 rounded-2xl p-8 mb-8 backdrop-blur-md">
@@ -525,51 +488,92 @@ export default function App() {
                     </p>
                   </div>
 
-                  <h2 className="text-xs font-bold text-purple-400 mb-4 tracking-widest">// RESOURCES_AND_STEPS</h2>
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xs font-bold text-purple-400 tracking-widest">// SUBNODE_RESOURCES</h2>
+                    <span className="text-xs text-slate-400 bg-slate-900 border border-slate-800 px-3 py-1 rounded-md">
+                      FOUND: {subNodeResources.length}
+                    </span>
+                  </div>
 
                   <div className="space-y-3">
-                    {(selectedSubNode.resources || []).map((resource, idx) => (
-                      <div
-                        key={resource.id}
-                        onClick={() => handleToggleResource(resource.id)}
-                        className={`p-5 rounded-xl border transition-all duration-200 cursor-pointer flex items-center justify-between ${
-                          resource.is_completed
-                            ? 'bg-purple-950/20 border-purple-500/40 text-purple-200'
-                            : 'bg-[#090d16]/60 border-slate-800 hover:border-purple-500/30 text-slate-300'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-4">
-                          <div className="w-8 h-8 rounded-lg bg-[#030712] border border-slate-800 flex items-center justify-center font-bold text-xs text-purple-400">
-                            {idx + 1}
-                          </div>
-                          <div>
-                            <h4 className="text-sm font-semibold normal-case font-sans">{resource.name || `Ресурс ${idx + 1}`}</h4>
-                            {resource.url && (
-                              <a href={resource.url} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[10px] text-purple-400 underline font-sans normal-case block mt-0.5">
-                                {resource.url}
-                              </a>
-                            )}
-                            <span className="text-[10px] text-slate-500 font-sans normal-case block mt-1">
-                              {resource.description || (resource.is_completed ? 'Ресурс пройден' : 'Нажми, чтобы отметить выполненным')}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div>
-                          {resource.is_completed ? (
-                            <div className="flex items-center space-x-2 text-purple-400 font-bold text-xs">
-                              <span>COMPLETED</span>
-                              <CheckCircle2 className="w-6 h-6 shadow-[0_0_12px_rgba(168,85,247,0.5)]" />
-                            </div>
-                          ) : (
-                            <div className="flex items-center space-x-2 text-slate-500 text-xs">
-                              <span>MARK DONE</span>
-                              <Circle className="w-6 h-6" />
-                            </div>
-                          )}
-                        </div>
+                    {subNodeResources.length === 0 ? (
+                      <div className="bg-[#090d16]/40 border border-slate-800/80 rounded-xl p-8 text-center text-slate-500 font-sans text-xs normal-case">
+                        В этой категории пока нет опубликованных ресурсов.
                       </div>
-                    ))}
+                    ) : (
+                      subNodeResources.map((resource, idx) => (
+                        <motion.div
+                          key={resource.id}
+                          layout
+                          onClick={() => handleToggleResource(resource.id)}
+                          whileHover={{ scale: 1.01 }}
+                          whileTap={{ scale: 0.99 }}
+                          className={`p-5 rounded-xl border transition-all duration-300 cursor-pointer flex items-center justify-between ${
+                            resource.is_completed
+                              ? 'bg-purple-950/20 border-purple-500/50 shadow-[0_0_20px_rgba(168,85,247,0.15)] text-purple-200'
+                              : 'bg-[#090d16]/60 border-slate-800 hover:border-purple-500/30 text-slate-300'
+                          }`}
+                        >
+                          <div className="flex items-center space-x-4">
+                            <div className={`w-8 h-8 rounded-lg flex items-center justify-center font-bold text-xs border ${
+                              resource.is_completed ? 'bg-purple-900/40 border-purple-500/50 text-purple-300' : 'bg-[#030712] border-slate-800 text-purple-400'
+                            }`}>
+                              {idx + 1}
+                            </div>
+                            <div>
+                              <h4 className="text-sm font-semibold normal-case font-sans">{resource.name || `Ресурс #${resource.id}`}</h4>
+
+                              {resource.url && (
+                                <a
+                                  href={resource.url.startsWith('http') ? resource.url : `https://${resource.url}`}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="inline-flex items-center space-x-1.5 mt-1.5 px-2.5 py-1 rounded-md bg-purple-950/40 border border-purple-800/40 hover:bg-purple-900/50 hover:border-purple-500/60 text-purple-300 text-[11px] normal-case font-sans transition-colors group/link"
+                                >
+                                  <span className="truncate max-w-[280px]">{resource.url}</span>
+                                  <ExternalLink className="w-3 h-3 text-purple-400 group-hover/link:translate-x-0.5 transition-transform shrink-0" />
+                                </a>
+                              )}
+
+                              <span className="text-[10px] text-slate-500 font-sans normal-case block mt-1">
+                                {resource.description || (resource.is_completed ? 'Выполнено' : 'Нажмите для изменения статуса')}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="pl-4">
+                            <AnimatePresence mode="wait">
+                              {resource.is_completed ? (
+                                <motion.div
+                                  key="completed"
+                                  initial={{ scale: 0.5, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  exit={{ scale: 0.5, opacity: 0 }}
+                                  className="flex items-center space-x-2 text-purple-400 font-bold text-xs"
+                                >
+                                  <span>COMPLETED</span>
+                                  <motion.div animate={{ scale: [1, 1.25, 1] }} transition={{ duration: 0.3 }}>
+                                    <CheckCircle2 className="w-6 h-6 text-purple-400 drop-shadow-[0_0_10px_rgba(168,85,247,0.8)]" />
+                                  </motion.div>
+                                </motion.div>
+                              ) : (
+                                <motion.div
+                                  key="mark"
+                                  initial={{ scale: 0.5, opacity: 0 }}
+                                  animate={{ scale: 1, opacity: 1 }}
+                                  exit={{ scale: 0.5, opacity: 0 }}
+                                  className="flex items-center space-x-2 text-slate-500 text-xs hover:text-slate-300 transition-colors"
+                                >
+                                  <span>MARK DONE</span>
+                                  <Circle className="w-6 h-6" />
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
+                          </div>
+                        </motion.div>
+                      ))
+                    )}
                   </div>
                 </motion.div>
               )}
@@ -591,9 +595,11 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                 {posts.map(post => {
-                  const isCommentsOpen = activeCommentPostId === post.id;
                   const likesList = post.likes || [];
                   const commentsList = post.comments || [];
+
+                  // Проверяем, поставил ли ТЕКУЩИЙ пользователь лайк на этот пост
+                  const hasUserLiked = likesList.some(l => String(l.user_id) === String(currentUserId));
 
                   return (
                     <div key={post.id} className="bg-[#090d16]/60 border border-slate-800 rounded-xl p-3 flex flex-col hover:border-purple-500/30 transition-all backdrop-blur-md">
@@ -608,97 +614,100 @@ export default function App() {
                         </span>
 
                         <div className="flex space-x-2">
-                          <button
+                          <motion.button
                             onClick={() => handleToggleLike(post.id)}
-                            className="flex items-center space-x-1 px-2.5 py-1 rounded-md border transition-all bg-slate-900/50 border-slate-800 text-slate-400 hover:border-rose-500/50 hover:text-rose-400"
-                          >
-                            <Heart className="w-3.5 h-3.5" />
-                            <span className="font-bold">{likesList.length}</span>
-                          </button>
-
-                          <button
-                            onClick={() => setActiveCommentPostId(isCommentsOpen ? null : post.id)}
-                            className={`flex items-center space-x-1 px-2.5 py-1 rounded-md border transition-all ${
-                              isCommentsOpen
-                                ? 'bg-purple-950/40 border-purple-500/50 text-purple-300'
-                                : 'bg-slate-900/50 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                            whileTap={{ scale: 0.85 }}
+                            className={`flex items-center space-x-1.5 px-2.5 py-1 rounded-md border transition-all ${
+                              hasUserLiked
+                                ? 'bg-rose-950/50 border-rose-500 text-rose-400 shadow-[0_0_10px_rgba(244,63,94,0.3)]'
+                                : 'bg-slate-900/50 border-slate-800 text-slate-400 hover:text-white hover:border-slate-700'
                             }`}
                           >
+                            <Heart className={`w-3.5 h-3.5 ${hasUserLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
+                            <span>{likesList.length}</span>
+                          </motion.button>
+
+                          <button
+                            onClick={() => setActiveCommentPostId(activeCommentPostId === post.id ? null : post.id)}
+                            className="flex items-center space-x-1.5 px-2.5 py-1 rounded-md border bg-slate-900/50 border-slate-800 text-slate-400 hover:text-white transition-colors"
+                          >
                             <MessageSquare className="w-3.5 h-3.5" />
-                            <span className="font-bold">{commentsList.length}</span>
+                            <span>{commentsList.length}</span>
                           </button>
                         </div>
                       </div>
 
-                      <AnimatePresence>
-                        {isCommentsOpen && (
-                          <motion.div
-                            initial={{ opacity: 0, height: 0 }}
-                            animate={{ opacity: 1, height: 'auto' }}
-                            exit={{ opacity: 0, height: 0 }}
-                            className="mt-3 pt-3 border-t border-slate-800/60 space-y-3 overflow-hidden"
-                          >
-                            <div className="max-h-36 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                              {commentsList.length === 0 ? (
-                                <p className="text-[10px] text-slate-500 normal-case font-sans italic text-center py-2">// Комментариев пока нет...</p>
-                              ) : (
-                                commentsList.map((c, idx) => (
-                                  <div key={c.id || idx} className="bg-[#030712] p-2 rounded-lg border border-slate-800/80 text-[11px] normal-case font-sans">
-                                    <span className="text-purple-400 font-mono font-bold uppercase text-[9px] block">
-                                      {c.user?.user_name || 'USER'}:
-                                    </span>
-                                    <p className="text-slate-300 mt-0.5 leading-snug">{c.text}</p>
-                                  </div>
-                                ))
-                              )}
-                            </div>
-
-                            <form onSubmit={(e) => handleAddComment(e, post.id)} className="flex items-center space-x-2">
-                              <input
-                                type="text"
-                                placeholder="Комментировать..."
-                                value={commentInputText}
-                                onChange={(e) => setCommentInputText(e.target.value)}
-                                className="flex-grow bg-[#030712] border border-slate-800 rounded-lg px-2.5 py-1.5 text-xs text-white focus:border-purple-500 focus:outline-none normal-case font-sans select-text"
-                              />
-                              <button
-                                type="submit"
-                                className="px-3 py-1.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-[10px] rounded-lg transition-all shrink-0"
-                              >
-                                SEND
-                              </button>
-                            </form>
-                          </motion.div>
-                        )}
-                      </AnimatePresence>
+                      {activeCommentPostId === post.id && (
+                        <div className="mt-3 pt-3 border-t border-slate-800/80 font-sans normal-case">
+                          <div className="max-h-32 overflow-y-auto space-y-2 mb-2 pr-1">
+                            {commentsList.length === 0 ? (
+                              <p className="text-[10px] text-slate-500 italic">Комментариев пока нет...</p>
+                            ) : (
+                              commentsList.map((c, i) => (
+                                <div key={i} className="text-[11px] bg-slate-900/80 p-2 rounded border border-slate-800">
+                                  <span className="text-purple-400 font-bold mr-1">{c.user?.user_name || 'User'}:</span>
+                                  <span className="text-slate-300">{c.text}</span>
+                                </div>
+                              ))
+                            )}
+                          </div>
+                          <form onSubmit={(e) => handleAddComment(e, post.id)} className="flex gap-2">
+                            <input
+                              type="text"
+                              placeholder="Написать комментарий..."
+                              value={commentInputText}
+                              onChange={(e) => setCommentInputText(e.target.value)}
+                              className="flex-grow bg-[#030712] border border-slate-800 rounded px-2.5 py-1 text-[11px] text-white focus:outline-none focus:border-purple-500"
+                            />
+                            <button type="submit" className="bg-purple-600 hover:bg-purple-500 px-2.5 py-1 rounded text-white text-[10px]">
+                              <Send className="w-3 h-3" />
+                            </button>
+                          </form>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
               </div>
             </motion.div>
           )}
-
-          {activeTab === 'profile' && (
-            <div className="max-w-md bg-[#090d16]/80 border border-slate-800 rounded-xl p-8 text-center backdrop-blur-md">
-              <h2 className="text-base font-bold text-white mb-2">// USER_PROFILE</h2>
-              <p className="text-xs text-purple-400 font-semibold">STATUS: AUTHENTICATED</p>
-            </div>
-          )}
         </main>
       </div>
 
       <AnimatePresence>
         {showPostModal && (
-          <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-            <div className="bg-[#090d16] border border-purple-500/40 p-6 rounded-xl w-full max-w-sm relative shadow-[0_0_35px_rgba(168,85,247,0.2)]">
-              <button onClick={() => setShowPostModal(false)} className="absolute top-4 right-4 text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
-              <h2 className="text-sm font-bold text-purple-400 mb-4 tracking-widest">// UPLOAD_WORK</h2>
-              <form onSubmit={handleCreatePost} className="space-y-3">
-                <input type="file" accept="image/*" onChange={e => setPostFile(e.target.files[0])} required className="w-full text-xs text-slate-400 file:mr-2 file:py-1 file:px-2.5 file:bg-purple-950/60 file:text-purple-300 file:border file:border-purple-800/50 file:rounded-md" />
-                <textarea placeholder="DESCRIPTION..." value={postDesc} onChange={e => setPostDesc(e.target.value)} required rows="3" className="w-full bg-[#030712] border border-slate-800 rounded-lg p-2.5 text-xs text-white focus:border-purple-500 focus:outline-none normal-case font-sans select-text" />
-                <button type="submit" className="w-full py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-lg shadow-[0_0_15px_rgba(168,85,247,0.4)] transition-all">PUBLISH</button>
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.95 }} className="bg-[#090d16] border border-slate-800 rounded-2xl p-6 w-full max-w-lg relative">
+              <button onClick={() => setShowPostModal(false)} className="absolute top-4 right-4 text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+              <h3 className="text-sm font-bold text-purple-400 mb-4 tracking-widest">// UPLOAD_ARTWORK</h3>
+
+              <form onSubmit={handleCreatePost} className="space-y-4 font-sans normal-case">
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1 uppercase font-mono">Описание</label>
+                  <textarea
+                    value={postDesc}
+                    onChange={(e) => setPostDesc(e.target.value)}
+                    placeholder="Расскажите о работе..."
+                    className="w-full bg-[#030712] border border-slate-800 rounded-lg p-3 text-xs text-white focus:outline-none focus:border-purple-500 h-24 resize-none"
+                  />
+                </div>
+                <div>
+                  <label className="text-[11px] text-slate-400 block mb-1 uppercase font-mono">Файл изображения</label>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(e) => setPostFile(e.target.files[0])}
+                    required
+                    className="w-full text-xs text-slate-400 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-purple-950/60 file:text-purple-300 hover:file:bg-purple-900/80 cursor-pointer"
+                  />
+                </div>
+                <button type="submit" className="w-full py-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs uppercase font-mono tracking-widest rounded-lg shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all">
+                  Опубликовать
+                </button>
               </form>
-            </div>
+            </motion.div>
           </div>
         )}
       </AnimatePresence>

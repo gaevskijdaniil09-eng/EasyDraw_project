@@ -59,7 +59,7 @@ async def show_subnodes():
         return nodes
 
 @router_roadmap.post("/toggle")
-async def toggle_progress(resource_id: int, user: User = Depends(get_current_user)):
+async def toggle_resource_progress(resource_id: int, user: User = Depends(get_current_user)):
     async with async_session_factory() as session:
 
         resource = await session.get(Resource, resource_id)
@@ -122,10 +122,31 @@ async def toggle_progress(resource_id: int, user: User = Depends(get_current_use
             "node_completed": id_node_completed
         }
 
-@router_roadmap.get("/show/resources", response_model=list[ResourceReadDTO])
-async def show_resources():
+@router_roadmap.get("/show/resources")
+async def show_resources(subnode_id: int, user_data = Depends(get_current_user)):
     async with async_session_factory() as session:
-        query = select(Resource).order_by(Resource.id)
-        result = await session.execute(query)
-        resources = result.scalars().all()
-        return resources
+        resource_query = select(Resource).where(Resource.subnode_id == subnode_id).order_by(Resource.id)
+        resource_res = await session.execute(resource_query)
+        resource_result = resource_res.scalars().all()
+
+        user_progress_query = (
+            select(UserResourceProgress.resource_id).
+            where(UserResourceProgress.user_id == user_data.id, UserResourceProgress.is_completed == True)
+        )
+        user_progress_res = await session.execute(user_progress_query)
+        user_progress_result = set(user_progress_res.scalars().all())
+
+        result = []
+        for r in resource_result:
+            r_dict = {
+                "id": r.id,
+                "name": r.name,
+                "description": r.description,
+                "url": r.url,
+                "subnode_id": r.subnode_id,
+                "is_completed": r.id in user_progress_result
+            }
+
+            result.append(r_dict)
+
+        return result
