@@ -47,13 +47,23 @@ class SubnodeCreateDTO(BaseModel):
     order_index: int
     category: str
 
+class SubnodeReadDTO(BaseModel):
+    id: int
+    node_id: int
+    name: str
+    description: str
+    order_index: int
+    category: str
+
+    model_config = ConfigDict(from_attributes=True)
+
 class NodeReadDTO(BaseModel):
     id: int
     name: str
     description: str
     order_index: int
     category: str
-    subnodes: list[SubnodeCreateDTO]
+    subnodes: list[SubnodeReadDTO]
 
     model_config = ConfigDict(from_attributes=True)
 

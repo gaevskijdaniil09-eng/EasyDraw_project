@@ -3,7 +3,7 @@ from datetime import datetime
 from DB import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from typing import Annotated, Optional
-from sqlalchemy import String, ForeignKey, MetaData, func
+from sqlalchemy import String, ForeignKey, MetaData, func, ARRAY
 metadata_obj = MetaData()
 
 
@@ -86,6 +86,7 @@ class Posts(Base):
     image_url: Mapped[str]
     created_at: Mapped[datetime] = mapped_column(server_default=func.now())
     description: Mapped[Optional[str]] = mapped_column(default=None)
+    tags: Mapped[list[str]] = mapped_column(ARRAY(String), default=list)
 
     user: Mapped["User"] = relationship(back_populates="posts")
     comments: Mapped[list["Comments"]] = relationship(back_populates="post")

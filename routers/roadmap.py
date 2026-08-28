@@ -1,6 +1,6 @@
 from DB import async_session_factory
 from models import User, RoadmapNode, Resource, UserResourceProgress, UserSubNodeProgress, SubNode
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import select, insert, func
 from sqlalchemy.orm import selectinload
 from schemas import UserDTO,SignInDTO
@@ -123,8 +123,13 @@ async def toggle_resource_progress(resource_id: int, user: User = Depends(get_cu
         }
 
 @router_roadmap.get("/show/resources")
-async def show_resources(subnode_id: int, user_data = Depends(get_current_user)):
+async def show_resources(subnode_id: int = Query(...), user_data = Depends(get_current_user)):
     async with async_session_factory() as session:
+
+        subnode = await session.get(SubNode, subnode_id)
+        if not subnode:
+            raise HTTPException(status_code=404, detail="Subnode not found")
+
         resource_query = select(Resource).where(Resource.subnode_id == subnode_id).order_by(Resource.id)
         resource_res = await session.execute(resource_query)
         resource_result = resource_res.scalars().all()
